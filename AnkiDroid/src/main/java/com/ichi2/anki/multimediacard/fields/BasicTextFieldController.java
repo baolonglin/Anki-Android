@@ -24,6 +24,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.os.AsyncTask;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.EditText;
@@ -36,9 +37,12 @@ import com.ichi2.anki.R;
 import com.ichi2.anki.multimediacard.activity.LoadPronounciationActivity;
 import com.ichi2.anki.multimediacard.activity.PickStringDialogFragment;
 import com.ichi2.anki.multimediacard.activity.TranslationActivity;
+import com.ichi2.anki.web.HttpFetcher;
 import com.ichi2.compat.CompatHelper;
 
 import java.io.File;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -155,6 +159,7 @@ public class BasicTextFieldController extends FieldControllerBase implements IFi
             if (!CompatHelper.isChromebook()) {
                 translationSources.add("ColorDict");
             }
+            translationSources.add("Lexin");
 
             fragment.setChoices(translationSources);
             fragment.setOnclickListener((dialog, which) -> {
@@ -163,6 +168,8 @@ public class BasicTextFieldController extends FieldControllerBase implements IFi
                     startTranslationWithGlosbe();
                 } else if ("ColorDict".equals(translationSource)) {
                     startTranslationWithColorDict();
+                } else if ("Lexin".equals(translationSource)) {
+                    startTranslationWithLexin();
                 }
             });
 
@@ -371,6 +378,52 @@ public class BasicTextFieldController extends FieldControllerBase implements IFi
         Intent intent = new Intent(mActivity, TranslationActivity.class);
         intent.putExtra(TranslationActivity.EXTRA_SOURCE, source);
         mActivity.startActivityForResultWithoutAnimation(intent, REQUEST_CODE_TRANSLATE_GLOSBE);
+    }
+
+    private void startTranslationWithLexin() {
+        String source = mEditText.getText().toString();
+        if(source.isEmpty()) {
+            showToast(gtxt(R.string.multimedia_editor_text_field_editing_no_text));
+            return;
+        }
+
+        try {
+            BackgroundPost translationLoadGet = new BasicTextFieldController.BackgroundPost();
+            translationLoadGet.execute();
+        } catch (Exception e) {
+            showToast(gtxt(R.string.multimedia_editor_something_wrong));
+        }
+    }
+
+    private class BackgroundPost extends AsyncTask<Void, Void, String> {
+
+        @Override
+        protected String doInBackground(Void... params) {
+            return HttpFetcher.fetchThroughHttp(computeAddress(mEditText.getText().toString()));
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            int idx = result.indexOf("</title>");
+            if(idx == -1) {
+                mEditText.setText(result);
+            } else {
+                idx += "</title>".length();
+                String patchedResult = result.substring(0, idx ) + "<style>li {text-align:left}</style>" + result.substring(idx);
+                mEditText.setText(patchedResult);
+            }
+        }
+    }
+
+    private String computeAddress(String originText) {
+        String address = "http://lexin.nada.kth.se/lexin/service?searchinfo=to,swe_swe,";
+        String query;
+        try {
+            query = URLEncoder.encode(originText, "utf-8");
+        } catch (UnsupportedEncodingException e) {
+            query = originText.replace(" ", "%20");
+        }
+        return address + query;
     }
 
 
